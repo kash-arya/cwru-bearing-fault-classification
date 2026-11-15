@@ -1,0 +1,112 @@
+# ==========================================
+# 1. PYTHON BYTECODE, CACHES & BUILD ARTIFACTS
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# 2. VIRTUAL ENVIRONMENTS
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# 3. SECRETS, CREDENTIALS & LOCAL CONFIGS
+# ==========================================
+.env
+.env.*
+*.local
+credentials.json
+secrets.toml
+secrets.yaml
+
+# ==========================================
+# 4. OS & IDE METADATA
+# ==========================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# 5. JUPYTER NOTEBOOKS
+# ==========================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ==========================================
+# 6. DATASETS & RAW / PROCESSED DATA
+# ==========================================
+/data/
+/raw/
+/processed/
+/verification/
+*.mat
+*.npy
+*.npz
+*.parquet
+*.h5
+*.hdf5
+*.feather
+
+# ==========================================
+# 7. MODEL WEIGHTS, CHECKPOINTS & SERIALIZATION
+# ==========================================
+/models/
+/checkpoints/
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# ==========================================
+# 8. EXPERIMENT LOGS & RUN ARTIFACTS
+# ==========================================
+*.log
+/runs/
+wandb/
+mlruns/
+lightning_logs/
+results/*.txt
+results/diagnostic_*.png
+
+# ==========================================
+# 9. COURSEWORK & INTERNAL VIVA / AI PREP
+# ==========================================
+roadmap*.md
+.mentor/
+docs/study_guide.md
+docs/interview-ready-report.md
+/scratch/
