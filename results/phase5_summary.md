@@ -2,10 +2,10 @@
 
 > [!NOTE]
 > **Evaluation Caveats:**
-> 1. Each LOLO test fold contains only 1 Normal file (58 windows in lolo_0, 117 windows in lolo_1..3).
-> 2. Normal files originate from 48 kHz resampled recordings while fault files are native 12 kHz (roadmap limitation h).
-> 3. DBSCAN StandardScaler and PCA are fitted on each test fold directly for unsupervised clustering, as unsupervised discovery operates without training partitions.
-> 4. Windows of one file are near-copies, so the effective sample size of every AUROC and clustering score is the number of test files (10 per LOLO fold), not the number of windows. per_class_severity scores compare one fault file with one Normal file.
+> 1. Each LOLO test fold includes only 1 Normal file (58 windows in `lolo_0`, 117 windows in `lolo_1`..`lolo_3`).
+> 2. Normal files originate from 48 kHz recordings resampled to 12 kHz, whereas fault files were acquired natively at 12 kHz.
+> 3. DBSCAN feature standardization and PCA are fitted directly on each test fold, as unsupervised clustering evaluates natural grouping without train/test partitions.
+> 4. Overlapping windows from the same continuous recording share high mutual information; the effective degrees of freedom for clustering and AUROC metrics align with the number of test files (10 per fold) rather than raw window counts. per_class_severity scores compare a single fault file against a single Normal file.
 
 ## Table 1: Experiment 1A — Unseen Fault Class Detection (IsolationForest AUROC)
 

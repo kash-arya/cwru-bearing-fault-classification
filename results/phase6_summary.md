@@ -2,11 +2,11 @@
 
 > [!NOTE]
 > **Evaluation Caveats:**
-> 1. Noise is synthetic white Gaussian added before the 3500 Hz low-pass (so post-low-pass effective SNR is higher; approximately +2.34 dB for white noise only; the measured values are in the effective SNR tables).
-> 2. Models are trained on clean data only (zero retraining or noise augmentation).
-> 3. Normal files originate from 48 kHz resampled recordings and are quieter (`rms = 0.045`), receiving weaker absolute noise in Variant A and lower effective SNR in Variant B.
-> 4. Each LOLO test fold contains 10 test files and each Severity test fold contains 13 test files (with only 1 Normal test file per fold).
-> 5. Standard deviations in this file are sample standard deviations (ddof=1) across the 4 LOLO splits, the 3 severity splits and the repetitions. The Phase 4 and Phase 5 summaries use population standard deviations (ddof=0), so the +- values of the clean rows differ (for example SVM LOLO 0.0288 here vs 0.0249 in results/phase4_summary.md); the means are identical. Convert with sqrt(n/(n-1)).
+> 1. Synthetic white Gaussian noise is injected prior to the 3500 Hz low-pass filter, so the effective post-filter SNR is higher (approximately +2.34 dB for ideal white noise; empirical values appear in the effective SNR tables).
+> 2. Classifiers are trained on clean data only (zero noise augmentation or robust retraining).
+> 3. Normal files originate from 48 kHz resampled recordings and have lower baseline power (`rms = 0.045`), receiving lower absolute noise in Variant A and lower effective SNR in Variant B.
+> 4. Each LOLO test fold contains 10 test files and each Severity test fold contains 13 test files (with exactly 1 Normal file per fold).
+> 5. Standard deviations reported here are sample standard deviations (`ddof=1`) across folds and repetitions. The Phase 4 and Phase 5 summaries report population standard deviations (`ddof=0`). Clean baseline means are identical across files; convert between standard deviations using $\sqrt{n / (n - 1)}$.
 
 ## Table 1: Macro-F1 vs. Additive Noise Level (Variant A & Variant B)
 

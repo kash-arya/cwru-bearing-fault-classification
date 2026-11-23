@@ -1,11 +1,11 @@
 # Phase 6C: Low-Pass Anti-Aliasing Cutoff Sensitivity Report
 
 > [!NOTE]
-> **Caveats:**
-> - Evaluated strictly with Random Forest using fixed pilot settings (300 trees, `class_weight="balanced"`, seeds [42, 0, 1]).
-> - The envelope band (1500–3000 Hz) and the 3500 Hz cutoff were chosen together in Phase 2, so 3500 may have a home advantage.
-> - At $C = 3000\text{ Hz}$, the filter also attenuates the upper edge of the 1500–3000 Hz envelope demodulation band.
-> - The cross-severity results rest on 3 splits with large spreads.
+> **Evaluation Caveats:**
+> - Evaluated using Random Forest with fixed hyperparameters (300 trees, `class_weight="balanced"`, seeds `[42, 0, 1]`).
+> - The envelope passband (1500–3000 Hz) and the 3500 Hz cutoff were selected concurrently in Phase 2; the 3500 Hz filter preserves this entire demodulation band.
+> - At $C = 3000\text{ Hz}$, the filter attenuates the upper edge of the 1500–3000 Hz envelope band.
+> - Cross-severity results rest on 3 outer splits exhibiting high cross-fold variance.
 > - Standard deviations are population standard deviations (`ddof=0`), consistent with Phase 4 and Phase 5 summaries.
 
 ## Table 1: Macro-F1 across Outer Splits per Cutoff (Seed 42)

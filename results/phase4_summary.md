@@ -16,7 +16,7 @@
 
 ## Table 2: Per-Class Generalization Metrics
 
-> Note: Normal class has exactly 1 test file per split (58 windows in lolo_0, 117 windows in all other splits).
+> **Sample size caveat:** Each test split contains exactly 1 Normal recording (58 windows in `lolo_0`, 117 windows across all other splits).
 
 | Model | Class | LOLO Recall | LOLO F1 | Severity Recall | Severity F1 |
 | --- | --- | --- | --- | --- | --- |
@@ -45,4 +45,4 @@
 | 6_full_nolp | full | 21 | 0.9649 | 1.0000 | 0.9979 | 0.9803 | 0.8013 | 0.3526 | 0.9223 | 0.9857 +- 0.0143 | 0.6921 +- 0.2451 |
 | 7_lp3500_no_loudness | no_loudness | 18 | 0.9993 | 1.0000 | 0.9865 | 0.9550 | 0.3747 | 0.3891 | 0.6483 | 0.9852 +- 0.0183 | 0.4707 +- 0.1257 |
 
-> **RMS / STD Identity:** rms and std are identical by construction, so ablation row 2 is equivalent to std only.
+> **RMS / STD equivalence:** Because windows are demeaned prior to feature extraction, RMS and standard deviation are mathematically identical. Ablation row 2 therefore reflects evaluating standard deviation alone.
