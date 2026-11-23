@@ -1,3 +1,8 @@
+"""Phase 6b: Low-Pass Filter Power Attenuation and Spectral Energy Analysis.
+
+Computes fractional energy removed by the 3500 Hz low-pass filter and power distributions.
+"""
+
 from pathlib import Path
 import pickle
 import numpy as np

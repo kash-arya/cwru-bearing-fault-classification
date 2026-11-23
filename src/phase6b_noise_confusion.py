@@ -1,3 +1,8 @@
+"""Phase 6b: Four-Class Confusion Matrices Under Additive Sensor Noise.
+
+Evaluates clean-trained classifiers under 10 dB and 5 dB Gaussian noise across LOLO splits.
+"""
+
 from pathlib import Path
 import json
 import pickle

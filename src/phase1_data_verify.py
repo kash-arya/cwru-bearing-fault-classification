@@ -1,12 +1,12 @@
 """Phase 1: Data Acquisition and Verification Pipeline for CWRU Bearing Dataset.
 
-Implements Steps 1-4 of roadmap.md:
-- Strictly validates and acquires 40 CWRU drive-end MAT files (excluding 0.028").
+Acquisition and integrity verification pipeline:
+- Validates and acquires 40 CWRU drive-end MAT files (excluding 0.028").
 - Validates file size (>100KB), loadmat readability, and exact DE_time key match.
 - Detects extraneous DE keys (e.g. workspace leakage in 99.mat) without halting.
-- Strict RPM resolution: exact key f"X{file_id:03d}RPM" or deterministic load fallback.
+- Resolves RPM: exact key f"X{file_id:03d}RPM" or deterministic motor load fallback.
 - Resamples 48 kHz Normal baseline signals to 12 kHz using polyphase FIR filtering.
-- Performs window counting (2048 window, 50% overlap) and anomaly flag logging.
+- Counts windows (2048 window, 50% overlap) and logs anomaly flags.
 - Generates results/phase1_file_manifest.csv and caches data/processed/phase1_signals_12k.pkl.
 """
 

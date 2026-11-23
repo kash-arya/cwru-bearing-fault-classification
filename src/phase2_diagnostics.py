@@ -1,6 +1,6 @@
 """Phase 2 Diagnostics: Signal Processing and Filter / Demodulation Validation.
 
-Executes Check 1, Check 2a, Check 2b, and Check 3 as defined in project roadmap.
+Evaluates filter roll-off, frequency response, and envelope demodulation on control pairs.
 Saves:
 - results/diagnostic_filter_rolloff.png
 - results/diagnostic_envelope_spectra.png

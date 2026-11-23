@@ -1,3 +1,8 @@
+"""Phase 5b: Audit DBSCAN Cluster Composition per File Across LOLO Test Folds.
+
+Groups clustered test-fold windows by recording identity to diagnose class/severity mixing.
+"""
+
 import json
 from pathlib import Path
 import numpy as np
