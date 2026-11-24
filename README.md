@@ -236,9 +236,17 @@ Normal recall in Variant B at 10 dB: SVM 0.9272, Random Forest 0.0029, XGBoost 0
 │   └── raw/                 # Downloaded .mat files (local, not tracked)
 ├── results/                 # Metrics, summaries, figures, and analysis reports (tracked)
 ├── src/                     # Pipeline implementation scripts (tracked)
+├── LICENSE                  # MIT license
 ├── README.md                # Project documentation
 └── requirements.txt         # Environment package specifications
 ```
+
+---
+
+
+## License
+
+The code in this repository is released under the MIT License (see LICENSE). The CWRU data files are not part of this repository and remain subject to the terms of the CWRU Bearing Data Center.
 
 ---
 
