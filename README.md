@@ -220,8 +220,8 @@ Normal recall in Variant B at 10 dB: SVM 0.9272, Random Forest 0.0029, XGBoost 0
   - Results were produced on Ubuntu Linux with Python 3.14.4. The packages numpy, scipy, scikit-learn and xgboost came from the virtual environment (PyPI builds); matplotlib and pandas came from the Ubuntu system packages (same version numbers as in requirements.txt). Other versions or builds may change numbers slightly.
   - A re-run of phases 1 to 4 in a clean environment with the PyPI packages of requirements.txt reproduced the macro-F1 values of results/phase4_metrics.csv and results/phase4_ablation.csv identically (maximum absolute difference 0, on the same machine). Phases 5 and 6 were not re-run.
 - **Tracked vs. Local Files:**
-  - Tracked in Git: All code in `src/`, package requirements in `requirements.txt`, documentation in `README.md`, and all final result tables and figures in `results/` (`.csv`, `.md`, `.json`, and `fig_*.png`).
-  - Created Locally (not tracked): Raw `.mat` downloads in `data/raw/`, processed signal pickles and cached feature tables in `data/processed/`, and intermediate text summaries and diagnostic figures (`results/*.txt`, `results/diagnostic_*.png`).
+  - Tracked in Git: All pipeline code in `src/`, package requirements in `requirements.txt`, documentation in `README.md`, `LICENSE`, and summary reports and figures in `results/` (`*.md` and `fig_*.png`).
+  - Created Locally (not tracked): Raw `.mat` downloads in `data/raw/`, processed signal pickles and cached feature tables in `data/processed/`, generated metric tables and feature metadata (`results/*.csv`, `results/feature_groups.json`), and intermediate text summaries and diagnostic figures (`results/*.txt`, `results/diagnostic_*.png`).
 
 ---
 
@@ -234,7 +234,7 @@ Normal recall in Variant B at 10 dB: SVM 0.9272, Random Forest 0.0029, XGBoost 0
 ├── data/
 │   ├── processed/           # Processed signals, splits, features, and model caches (local, not tracked)
 │   └── raw/                 # Downloaded .mat files (local, not tracked)
-├── results/                 # Metrics, summaries, figures, and analysis reports (tracked)
+├── results/                 # Summary reports and figures (tracked); generated CSV/JSON tables (local, not tracked)
 ├── src/                     # Pipeline implementation scripts (tracked)
 ├── LICENSE                  # MIT license
 ├── README.md                # Project documentation

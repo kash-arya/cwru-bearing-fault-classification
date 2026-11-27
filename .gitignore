@@ -101,12 +101,14 @@ mlruns/
 lightning_logs/
 results/*.txt
 results/diagnostic_*.png
+results/*.csv
+results/feature_groups.json
 
 # ==========================================
-# 9. COURSEWORK & INTERNAL VIVA / AI PREP
+# 9. LOCAL NOTES & REPORT ARTIFACTS
 # ==========================================
 roadmap*.md
 .mentor/
-docs/study_guide.md
-docs/interview-ready-report.md
+/docs/
+src/build_report.py
 /scratch/
