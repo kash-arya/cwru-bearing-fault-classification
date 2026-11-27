@@ -3,6 +3,8 @@
 Evaluates out-of-distribution novelty detection across 4 LOLO test folds with 5 seeds,
 and evaluates unsupervised clustering via DBSCAN with automated k-distance elbow selection.
 """
+# Reads: data/processed/phase2_features_lp3500.csv, data/processed/phase2_features_nolp.csv, results/feature_groups.json, data/processed/phase3_splits.json, results/phase3_splits_summary.csv
+# Writes: results/phase5_novelty_A.csv, results/phase5_novelty_B.csv, results/diagnostic_phase5_kdistance.png, results/phase5_dbscan.csv, results/phase5_dbscan_crosstab.csv, results/phase5_dbscan_eps_sensitivity.csv, results/phase5_summary.md
 
 from pathlib import Path
 import time
@@ -145,6 +147,7 @@ def main():
                 for seed in SEEDS:
                     model = IsolationForest(n_estimators=300, random_state=seed, n_jobs=-1)
                     model.fit(X_tr)
+                    # IsolationForest.score_samples gives higher values to inliers; negate so higher score indicates anomaly (positive class 1)
                     scores = -model.score_samples(X_te)
                     seed_scores.append(scores)
 
@@ -173,6 +176,7 @@ def main():
                     seed_aurocs = []
                     for s_idx in range(len(SEEDS)):
                         sc_sub = seed_scores[s_idx][mask]
+                        # Threshold-free ROC-AUC: positive class 1 = held_out_class, negative class 0 = comparison target
                         auc = float(roc_auc_score(y_bin, sc_sub))
                         seed_aurocs.append(auc)
 
@@ -183,6 +187,7 @@ def main():
                         "comparison": comp_name,
                         "n_pos_windows": n_pos,
                         "n_neg_windows": n_neg,
+                        # Population standard deviation (ddof=0) across 5 seeds ([0, 1, 2, 3, 4])
                         "auroc_seed_mean": float(np.mean(seed_aurocs)),
                         "auroc_seed_std": float(np.std(seed_aurocs, ddof=0)),
                     }
@@ -236,6 +241,7 @@ def main():
             seed_scores = []
             if is_rms_baseline:
                 # Deterministic baseline: raw rms directly as score
+                # Higher window RMS predicts fault class 1 vs Normal class 0
                 raw_rms_scores = te_sub["rms"].values
                 for _ in SEEDS:
                     seed_scores.append(raw_rms_scores)
@@ -243,6 +249,7 @@ def main():
                 for seed in SEEDS:
                     model = IsolationForest(n_estimators=300, random_state=seed, n_jobs=-1)
                     model.fit(X_tr_norm)
+                    # Negate score_samples so anomalous (fault) windows score higher than Normal training baseline
                     scores = -model.score_samples(X_te)
                     seed_scores.append(scores)
 
@@ -326,6 +333,7 @@ def main():
         N = len(X_te)
 
         # 1. Fit StandardScaler and PCA on X_test (intentional for unsupervised test-fold clustering)
+        # Standardize 20 features to zero mean and unit variance, then retain >= 95% cumulative variance via full-SVD PCA
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_te)
         pca = PCA(n_components=0.95, svd_solver="full", random_state=42)
@@ -334,12 +342,15 @@ def main():
         var_retained = float(np.sum(pca.explained_variance_ratio_))
 
         # 2. Set min_samples
+        # Clamp DBSCAN min_samples = clip(2 * n_pcs, 10, 30)
         min_samples = int(np.clip(2 * n_pcs, 10, 30))
 
         # 3. Automatic k-distance elbow selection
+        # Sort distance to k-th nearest Euclidean neighbor (k = min_samples, including self at column 0)
         nbrs = NearestNeighbors(n_neighbors=min_samples, metric="euclidean").fit(X_pca)
         k_dist = np.sort(nbrs.kneighbors()[0][:, -1])
 
+        # Normalize rank and k-distance to [0, 1]; elbow maximizes orthogonal distance |y_norm - x_norm| / sqrt(2) to diagonal chord
         x_norm = np.arange(N) / (N - 1)
         y_norm = (k_dist - k_dist[0]) / max(k_dist[-1] - k_dist[0], 1e-12)
         chord_dist = np.abs(y_norm - x_norm) / np.sqrt(2.0)
@@ -361,10 +372,12 @@ def main():
         dbscan = DBSCAN(eps=eps_auto, min_samples=min_samples).fit(X_pca)
         labels = dbscan.labels_
         unique_labels = sorted(list(set(labels)))
+        # Exclude DBSCAN noise label (-1) when counting distinct discovered clusters
         n_clusters = int(len(set(labels) - {-1}))
         n_noise = int(np.sum(labels == -1))
         noise_frac = float(np.mean(labels == -1))
 
+        # Clustering alignment against ground-truth fault_class including noise label -1 as a separate cluster
         ari_noise = float(adjusted_rand_score(y_true, labels))
         nmi_noise = float(normalized_mutual_info_score(y_true, labels))
 
@@ -374,6 +387,7 @@ def main():
             ari_no_noise = np.nan
             nmi_no_noise = np.nan
         else:
+            # ARI and NMI evaluated exclusively on core/border points (excluding label -1)
             ari_no_noise = float(adjusted_rand_score(y_true[mask], labels[mask]))
             nmi_no_noise = float(normalized_mutual_info_score(y_true[mask], labels[mask]))
 

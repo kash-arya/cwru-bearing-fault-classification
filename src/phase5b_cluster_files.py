@@ -2,6 +2,8 @@
 
 Groups clustered test-fold windows by recording identity to diagnose class/severity mixing.
 """
+# Reads: data/processed/phase2_features_lp3500.csv, results/feature_groups.json, data/processed/phase3_splits.json, results/phase5_dbscan.csv
+# Writes: results/phase5_dbscan_cluster_files.csv
 
 import json
 from pathlib import Path
@@ -50,6 +52,7 @@ def main():
         X_te = te_sub[DBSCAN_FEATURES].values
 
         # StandardScaler + PCA
+        # Standardize 20 features (zero mean, unit variance) and retain >= 95% variance via full-SVD PCA; min_samples = clip(2*n_pcs, 10, 30)
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_te)
         pca = PCA(n_components=0.95, svd_solver="full", random_state=42)
@@ -58,6 +61,7 @@ def main():
         min_samples = int(np.clip(2 * n_pcs, 10, 30))
 
         # k-distance chord elbow
+        # Sorted Euclidean distances to k-th nearest neighbor (k=min_samples); elbow maximizes |y_norm - x_norm| / sqrt(2)
         nbrs = NearestNeighbors(n_neighbors=min_samples, metric="euclidean").fit(X_pca)
         k_dist = np.sort(nbrs.kneighbors()[0][:, -1])
         x_norm = np.arange(N) / (N - 1)
@@ -71,6 +75,7 @@ def main():
         labels = dbscan.labels_
         te_sub["cluster_label"] = labels
 
+        # Exclude DBSCAN noise label (-1) from cluster count
         n_clusters = int(len(set(labels) - {-1}))
         n_noise = int(np.sum(labels == -1))
 

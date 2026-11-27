@@ -3,6 +3,8 @@
 Evaluates cutoff frequencies [3000, 3500, 4000, 4500, 5000, 'none'] using
 Random Forest across 7 outer splits and 3 random seeds.
 """
+# Reads: results/phase1_file_manifest.csv, data/processed/phase1_signals_12k.pkl, data/processed/phase3_splits.json, data/processed/phase2_features_lp3500.csv, data/processed/phase2_features_nolp.csv, results/phase4_ablation.csv, cache data/processed/phase6c_cache/features_*.pkl
+# Writes: cache data/processed/phase6c_cache/features_*.pkl, results/phase6c_power_removed.csv, results/phase6c_cutoff_metrics.csv, results/phase6c_per_file.csv, results/phase6c_cutoff_summary.md, results/fig_phase6c_cutoff_vs_macro_f1.png
 
 import os
 import sys
@@ -78,6 +80,7 @@ def main():
             if cutoff == "none":
                 df_feat, _ = compute_features_for_dataset(signals, manifest_df, use_lp3500=False)
             else:
+                # 8th-order Butterworth low-pass at c_val Hz (fs=12000 Hz) via zero-phase sosfiltfilt; use_lp3500=False skips the default 3500 Hz filter
                 c_val = int(cutoff)
                 sos = scipy.signal.butter(8, c_val, btype="lowpass", fs=12000, output="sos")
                 filtered_signals = {}
@@ -137,6 +140,7 @@ def main():
     p_pre_dict = {}
     for fid in sorted(signals.keys()):
         raw_x = signals[fid]["x"]
+        # Pre-filter AC signal power: mean((x - mean(x))^2)
         x_demean = raw_x - np.mean(raw_x)
         p_pre_dict[fid] = float(np.mean(x_demean ** 2))
 
@@ -156,6 +160,7 @@ def main():
             for fid in sorted(signals.keys()):
                 raw_x = signals[fid]["x"]
                 x_demean = raw_x - np.mean(raw_x)
+                # Zero-phase 8th-order low-pass filtered AC power and removed power fraction: 1 - P_post / P_pre
                 x_filt = scipy.signal.sosfiltfilt(sos, x_demean)
                 p_post = float(np.mean(x_filt ** 2))
                 frac = float(1.0 - p_post / p_pre_dict[fid])
@@ -211,6 +216,7 @@ def main():
                 X_test = te_df[ALL_FEATURES].values
                 y_test = te_df["fault_class"].values
 
+                # 300-tree class-balanced Random Forest; evaluate unweighted macro-F1 and per-class recall
                 clf = RandomForestClassifier(n_estimators=300, class_weight="balanced", random_state=seed, n_jobs=-1)
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_test)
@@ -320,6 +326,7 @@ def main():
         lolo_scores = [float(sub_s42.loc[s, "macro_f1"]) for s in lolo_splits]
         sev_scores = [float(sub_s42.loc[s, "macro_f1"]) for s in sev_splits]
 
+        # Population mean and population std (ddof=0) across splits; seed std uses ddof=0 across SEEDS=[42, 0, 1]
         lolo_mean = float(np.mean(lolo_scores))
         lolo_std = float(np.std(lolo_scores, ddof=0))
         sev_mean = float(np.mean(sev_scores))

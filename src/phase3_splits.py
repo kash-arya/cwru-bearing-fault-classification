@@ -12,6 +12,8 @@ Outputs:
 - data/processed/phase3_splits.json
 - results/phase3_splits_summary.csv
 """
+# Reads: results/phase1_file_manifest.csv, data/processed/phase2_features_lp3500.csv, data/processed/phase2_features_nolp.csv (pd.read_csv)
+# Writes: data/processed/phase3_splits.json (json.dump), results/phase3_splits_summary.csv (to_csv)
 
 import json
 import os
@@ -110,11 +112,13 @@ def main():
     splits = {}
 
     # A. Outer Leave-One-Load-Out (LOLO)
+    # Partition by motor load_hp in [0, 1, 2, 3]: 10 test files (3 per fault class + 1 Normal), 30 outer train files
     for L in [0, 1, 2, 3]:
         s_name = f"lolo_{L}"
         test_f = sorted([int(fid) for fid in manifest[manifest["load_hp"] == L]["file_id"].tolist()])
         train_f = sorted([int(fid) for fid in manifest[manifest["load_hp"] != L]["file_id"].tolist()])
 
+        # Inner CV holds out one load l from the 3 training loads (10 val files, 20 inner train files)
         inner_folds = []
         train_loads = sorted([x for x in [0, 1, 2, 3] if x != L])
         for l in train_loads:
@@ -146,14 +150,17 @@ def main():
 
     for s in ["0.007", "0.014", "0.021"]:
         s_name = f"sev_{s}"
+        # Outer test: 12 fault files at severity s + load-3 Normal file (file 100, 13 test files total)
         fault_test = manifest[(manifest["fault_class"] != "Normal") & (manifest["severity"] == s)]["file_id"].tolist()
         norm_test = manifest[(manifest["fault_class"] == "Normal") & (manifest["load_hp"] == 3)]["file_id"].tolist()
         test_f = sorted([int(fid) for fid in (fault_test + norm_test)])
 
+        # Outer train: 24 remaining fault files + loads 0, 1, 2 Normal files (27 train files total)
         fault_train = manifest[(manifest["fault_class"] != "Normal") & (manifest["severity"] != s)]["file_id"].tolist()
         norm_train = manifest[(manifest["fault_class"] == "Normal") & (manifest["load_hp"].isin([0, 1, 2]))]["file_id"].tolist()
         train_f = sorted([int(fid) for fid in (fault_train + norm_train)])
 
+        # Inner CV holds out load l in [0, 1, 2] across training severities + Normal (7 val files, 20 train files)
         inner_folds = []
         for l in [0, 1, 2]:
             val_fault = manifest[(manifest["fault_class"] != "Normal") & (manifest["severity"] != s) & (manifest["load_hp"] == l)]["file_id"].tolist()

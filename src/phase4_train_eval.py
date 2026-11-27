@@ -17,6 +17,8 @@ Executes:
    - data/processed/phase4_predictions.csv
    - data/processed/phase4_best_params.json
 """
+# Reads: results/phase1_file_manifest.csv, results/feature_groups.json, data/processed/phase3_splits.json, results/phase3_splits_summary.csv, data/processed/phase2_features_lp3500.csv, data/processed/phase2_features_nolp.csv, and cache files under data/processed/phase4_cache/
+# Writes: data/processed/phase4_cache/*.pkl, data/processed/phase4_best_params.json, results/phase4_metrics.csv, results/phase4_confusion.csv, results/phase4_per_file.csv, results/phase4_importance.csv, data/processed/phase4_predictions.csv, results/phase4_ablation.csv, results/phase4_summary.md
 
 import itertools
 import json
@@ -65,10 +67,12 @@ class CorrelationFilter(BaseEstimator, TransformerMixin):
         self.threshold = threshold
 
     def fit(self, X, y=None):
+        # Compute pairwise absolute Pearson correlation matrix (NaNs replaced with 0.0)
         df_x = pd.DataFrame(X)
         corr = df_x.corr().abs().fillna(0.0).values
         n = corr.shape[0]
         dropped = set()
+        # Keep the first column i and drop any later column j with |r(i, j)| > threshold (default 0.95)
         for i in range(n):
             if i not in dropped:
                 for j in range(i + 1, n):
@@ -101,11 +105,13 @@ def compute_multiclass_specificity(cm: np.ndarray) -> np.ndarray:
     total = np.sum(cm)
     specs = np.zeros(n_classes, dtype=float)
     for k in range(n_classes):
+        # One-vs-rest confusion counts for class k: TP = cm[k, k], FP = col_k - TP, FN = row_k - TP, TN = total - TP - FP - FN
         tp = cm[k, k]
         fp = np.sum(cm[:, k]) - tp
         fn = np.sum(cm[k, :]) - tp
         tn = total - tp - fp - fn
         denom = tn + fp
+        # Specificity = TN / (TN + FP), or 0.0 if denominator is 0
         specs[k] = (tn / denom) if denom > 0 else 0.0
     return specs
 
@@ -117,6 +123,7 @@ def get_majority_vote(y_pred_file: np.ndarray, scores_file: np.ndarray) -> int:
     candidate_classes = np.where(counts == max_count)[0]
     if len(candidate_classes) == 1:
         return int(candidate_classes[0])
+    # Break majority-vote ties using the highest mean class score across file windows
     mean_scores = np.mean(scores_file, axis=0)
     best_cand = candidate_classes[0]
     best_score = mean_scores[best_cand]
@@ -251,6 +258,7 @@ def main():
     print(f"lolo_3 lp3500 test macro-F1: {f1_l3_lp:.4f} (expected: 0.9478, runtime: {runtime_l3_lp:.2f}s)")
     print(f"lolo_3 nolp   test macro-F1: {f1_l3_no:.4f} (expected: 0.9803, runtime: {runtime_l3_no:.2f}s)")
 
+    # Fail-fast parity check on lolo_3 RF (300 trees, class_weight="balanced", random_state=42) within +-0.001 macro-F1
     off_lp = abs(f1_l3_lp - 0.9478) > 0.001
     off_no = abs(f1_l3_no - 0.9803) > 0.001
     which_off = "none"
@@ -355,6 +363,7 @@ def main():
                         clf.fit(X_tr, y_tr)
                     elif model_name == "xgb":
                         depth_val, lr_val = cand
+                        # Inverse class-frequency sample weights: n_samples / (n_classes * bincount(y_tr))
                         sw = compute_sample_weight("balanced", y_tr)
                         clf = XGBClassifier(
                             n_estimators=200,
@@ -397,6 +406,7 @@ def main():
                     ("svc", SVC(kernel="rbf", C=c_val, gamma=gamma_val, class_weight="balanced", random_state=42))
                 ])
                 final_model.fit(X_out_tr, y_out_tr)
+                # SVM continuous ranking scores use raw decision_function margins (no probability calibration)
                 scores_te = final_model.decision_function(X_out_te)
                 y_pred_te = final_model.predict(X_out_te)
                 corr_filter = final_model.named_steps["corr"]
@@ -510,6 +520,7 @@ def main():
                 r = float(recall_score(y_true == k, y_pred == k, zero_division=0))
                 f1 = float(f1_score(y_true == k, y_pred == k, zero_division=0))
                 sp = float(specs[k])
+                # One-vs-rest binary ROC-AUC for class k using continuous class score column scores[:, k]
                 auc = float(roc_auc_score(y_bin, scores[:, k]))
                 supp = int(np.sum(y_true == k))
 
@@ -531,6 +542,7 @@ def main():
                 })
 
             # Macro row
+            # Unweighted arithmetic mean across the 4 classes for each metric
             metrics_rows.append({
                 "model": model_name,
                 "split": s_name,
@@ -726,6 +738,7 @@ def main():
     lolo_row = {"Split": "LOLO mean +- std"}
     for m in ["svm", "rf", "xgb"]:
         vals = df_macro[(df_macro["model"] == m) & (df_macro["split"].isin(lolo_splits))]["f1"].values
+        # np.std uses ddof=0 (population standard deviation across splits)
         lolo_row[m.upper()] = f"{np.mean(vals):.4f} +- {np.std(vals):.4f}"
     t1_rows.append(lolo_row)
 
@@ -733,6 +746,7 @@ def main():
     sev_row = {"Split": "Severity mean +- std"}
     for m in ["svm", "rf", "xgb"]:
         vals = df_macro[(df_macro["model"] == m) & (df_macro["split"].isin(sev_splits))]["f1"].values
+        # np.std uses ddof=0 (population standard deviation across splits)
         sev_row[m.upper()] = f"{np.mean(vals):.4f} +- {np.std(vals):.4f}"
     t1_rows.append(sev_row)
 
@@ -745,6 +759,7 @@ def main():
             sub_lolo = df_metrics[(df_metrics["model"] == m) & (df_metrics["class"] == c) & (df_metrics["split"].isin(lolo_splits))]
             sub_sev = df_metrics[(df_metrics["model"] == m) & (df_metrics["class"] == c) & (df_metrics["split"].isin(sev_splits))]
 
+            # pandas Series.std() uses default ddof=1 (sample standard deviation across splits)
             rec_lolo = f"{sub_lolo['recall'].mean():.4f} +- {sub_lolo['recall'].std():.4f}"
             f1_lolo = f"{sub_lolo['f1'].mean():.4f} +- {sub_lolo['f1'].std():.4f}"
             rec_sev = f"{sub_sev['recall'].mean():.4f} +- {sub_sev['recall'].std():.4f}"
@@ -783,6 +798,7 @@ def main():
         }
         for s in SPLIT_NAMES:
             row_d[s] = f"{sub_ab[sub_ab['split'] == s]['macro_f1'].iloc[0]:.4f}"
+        # np.std uses ddof=0 (population standard deviation across splits)
         row_d["LOLO Mean+-Std"] = f"{np.mean(lolo_vals):.4f} +- {np.std(lolo_vals):.4f}"
         row_d["Sev Mean+-Std"] = f"{np.mean(sev_vals):.4f} +- {np.std(sev_vals):.4f}"
         t3_rows.append(row_d)

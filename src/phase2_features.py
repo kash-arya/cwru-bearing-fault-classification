@@ -16,6 +16,8 @@ Saves:
 - results/phase2_features_summary.txt
 - results/pilot_lolo_fold3.txt
 """
+# Reads: data/processed/phase1_signals_12k.pkl (pickle.load), results/phase1_file_manifest.csv (pd.read_csv)
+# Writes: data/processed/phase2_features_lp3500.csv, data/processed/phase2_features_nolp.csv, results/feature_groups.json, results/phase2_features_summary.txt, results/pilot_lolo_fold3.txt
 
 import json
 import os
@@ -78,29 +80,41 @@ def extract_window_features(
     x = win_raw - np.mean(win_raw)
 
     # 1. Time-Domain (9 features)
+    # rms = sqrt(mean(x^2))
     rms = float(np.sqrt(np.mean(x ** 2)))
+    # Pearson kurtosis (fisher=False: 3.0 for Gaussian): mean((x / sigma)^4)
     kurtosis = float(scipy.stats.kurtosis(x, fisher=False))  # Pearson definition
+    # crest_factor = max(|x|) / (rms + 1e-12)
     crest_factor = float(np.max(np.abs(x)) / (rms + 1e-12))
+    # Sample skewness: E[((x - mu) / sigma)^3]
     skewness = float(scipy.stats.skew(x))
+    # peak_to_peak = max(x) - min(x)
     peak_to_peak = float(np.ptp(x))
+    # Population standard deviation (ddof=0); equal to rms because x is zero-mean
     std = float(np.std(x))
     mean_abs = float(np.mean(np.abs(x)))
+    # shape_factor = rms / (mean(|x|) + 1e-12); impulse_factor = max(|x|) / (mean(|x|) + 1e-12)
     shape_factor = float(rms / (mean_abs + 1e-12))
     impulse_factor = float(np.max(np.abs(x)) / (mean_abs + 1e-12))
+    # Clearance/margin factor = max(|x|) / (mean(sqrt(|x|))^2 + 1e-12)
     mean_sqrt_abs = float(np.mean(np.sqrt(np.abs(x))))
     margin_factor = float(np.max(np.abs(x)) / ((mean_sqrt_abs ** 2) + 1e-12))
 
     # 2. Frequency-Domain (6 features)
+    # Unnormalized Hann-windowed DFT magnitude |rfft(x * hann)| and squared DFT power
     spec = np.abs(np.fft.rfft(x * hann))
     power = spec ** 2
     total_power = float(np.sum(power))
 
+    # Power-weighted mean frequency (Hz): sum(f * power) / (sum(power) + 1e-12)
     spectral_centroid = float(np.sum(freqs * power) / (total_power + 1e-12))
+    # Shannon spectral entropy (nats): -sum(p * ln(p + 1e-12)) with p = power / (total_power + 1e-12)
     p = power / (total_power + 1e-12)
     spectral_entropy = float(-np.sum(p * np.log(p + 1e-12)))
 
     tol = 6.0
     def get_band_energy_frac(f_target: float) -> float:
+        # Fraction of unnormalized DFT power within [f_target - 6.0 Hz, f_target + 6.0 Hz]
         mask = (freqs >= f_target - tol) & (freqs <= f_target + tol)
         return float(np.sum(power[mask]) / (total_power + 1e-12))
 
@@ -111,15 +125,18 @@ def extract_window_features(
 
     # 3. Envelope Demodulation (6 features)
     # Bandpass 1500-3000 Hz, demean, Hilbert envelope, demean envelope, Hann, FFT
+    # Zero-phase filter via sosfiltfilt, analytic envelope |hilbert|, then demeaned Hann rfft
     filt = scipy.signal.sosfiltfilt(bp_sos, x)
     demeaned_filt = filt - np.mean(filt)
     env = np.abs(scipy.signal.hilbert(demeaned_filt))
     env_demeaned = env - np.mean(env)
     env_spec = np.abs(np.fft.rfft(env_demeaned * hann))
 
+    # Baseline noise floor: median envelope amplitude in 10-350 Hz
     noise_median = float(np.median(env_spec[(freqs >= 10.0) & (freqs <= 350.0)]))
 
     def get_env_snr(f_target: float) -> float:
+        # Peak-to-median envelope SNR within f_target +- 6.0 Hz: max(env_spec[mask]) / (noise_median + 1e-12)
         mask = (freqs >= f_target - tol) & (freqs <= f_target + tol)
         return float(np.max(env_spec[mask]) / (noise_median + 1e-12))
 
@@ -160,8 +177,10 @@ def compute_features_for_dataset(signals: dict, manifest_df: pd.DataFrame, use_l
     window_size = 2048
     step = 1024
     hann = np.hanning(window_size)
+    # Frequency bins in Hz for sample spacing d = 1/12000 s (df = 12000/2048 Hz)
     freqs = np.fft.rfftfreq(window_size, d=1.0 / 12000.0)
 
+    # 8th-order Butterworth low-pass at 3500 Hz and 4th-order bandpass at [1500, 3000] Hz (fs=12000 Hz)
     lp_sos = scipy.signal.butter(8, 3500, btype="lowpass", fs=12000, output="sos")
     bp_sos = scipy.signal.butter(4, [1500, 3000], btype="bandpass", fs=12000, output="sos")
 
@@ -184,6 +203,7 @@ def compute_features_for_dataset(signals: dict, manifest_df: pd.DataFrame, use_l
             f"File {fid}: computed windows ({n_windows}) != manifest window_count ({expected_windows})"
         )
 
+        # Shaft rotation frequency f_shaft = RPM / 60 (Hz) and fault multiples BPFO/BPFI/BSF
         rpm = float(meta["rpm"])
         f_shaft = rpm / 60.0
         bpfo = 3.5848 * f_shaft
@@ -211,6 +231,7 @@ def compute_features_for_dataset(signals: dict, manifest_df: pd.DataFrame, use_l
             rows.append(row)
 
             # Leakage diagnostic feature: hf_frac (power in 4000-5900 Hz / total power)
+            # Fraction of unnormalized Hann-windowed DFT power in [4000, 5900] Hz: sum(w_pow[mask_hf]) / (sum(w_pow) + 1e-12)
             w_demean = win_raw - np.mean(win_raw)
             w_spec = np.abs(np.fft.rfft(w_demean * hann))
             w_pow = w_spec ** 2
@@ -342,6 +363,7 @@ def main():
         rf.fit(X_train, y_train)
         y_pred = rf.predict(X_test)
 
+        # Unweighted mean of per-class F1 scores across the 4 classes
         macro_f1 = float(f1_score(y_test, y_pred, average="macro"))
         pilot_lines.append(f"\nMacro-F1: {macro_f1:.4f}")
 
@@ -406,6 +428,7 @@ def main():
         pilot_lines.append(f"  {cls:<12}: {mean_hf:.6f} ({mean_hf*100:.3f}% of total power)")
 
     # AUROC computations: Normal = positive class (1), faults = 0
+    # Binary ROC-AUC with positive label Normal (1) and higher hf_frac as positive score
     y_normal_binary = (df_nolp["fault_class"] == "Normal").astype(int).values
     scores_all = df_nolp["hf_frac"].values
     auroc_all = float(roc_auc_score(y_normal_binary, scores_all))

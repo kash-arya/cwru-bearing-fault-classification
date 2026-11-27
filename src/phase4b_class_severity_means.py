@@ -3,6 +3,8 @@
 Computes mean physical features per fault_class and severity,
 and mean RMS per fault_class, severity, and load_hp.
 """
+# Reads: data/processed/phase2_features_lp3500.csv (pd.read_csv)
+# Writes: results/phase4b_class_severity_means.csv (to_csv)
 
 from pathlib import Path
 import pandas as pd
@@ -31,6 +33,7 @@ def main():
     sev_order = {"none": 0, "0.007": 1, "0.014": 2, "0.021": 3}
 
     # Table 1: Feature means per fault_class and severity
+    # Arithmetic mean of each of the 8 selected features across all windows in each (fault_class, severity) group
     t1 = df.groupby(["fault_class", "severity"], as_index=False)[features].mean()
     t1["c_ord"] = t1["fault_class"].map(class_order)
     t1["s_ord"] = t1["severity"].map(sev_order)
@@ -44,6 +47,7 @@ def main():
     print(t1.to_string(index=False))
 
     # Table 2: RMS means per fault_class, severity, and load_hp
+    # Arithmetic mean of window RMS across each (fault_class, severity, load_hp) group
     t2 = df.groupby(["fault_class", "severity", "load_hp"], as_index=False)["rms"].mean()
     t2["c_ord"] = t2["fault_class"].map(class_order)
     t2["s_ord"] = t2["severity"].map(sev_order)

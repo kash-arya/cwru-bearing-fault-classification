@@ -9,6 +9,8 @@ Acquisition and integrity verification pipeline:
 - Counts windows (2048 window, 50% overlap) and logs anomaly flags.
 - Generates results/phase1_file_manifest.csv and caches data/processed/phase1_signals_12k.pkl.
 """
+# Reads: data/raw/*.mat (with fallbacks in repo root, verification/, /tmp/cwru_test/, or remote CWRU URLs) via scipy.io.loadmat
+# Writes: data/raw/*.mat (downloaded/copied), results/phase1_file_manifest.csv, data/processed/phase1_signals_12k.pkl
 
 import csv
 import os
@@ -97,6 +99,7 @@ def download_file(file_id: int, dest_path: Path, max_retries: int = 3, timeout: 
             return True
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             if attempt < max_retries:
+                # Linear backoff: sleep 1.5 * attempt seconds before retry (max_retries=3, timeout=30 s)
                 time.sleep(1.5 * attempt)
             else:
                 print(f"[ERROR] Failed to download file {file_id}.mat after {max_retries} attempts: {e}")
@@ -110,6 +113,7 @@ def validate_mat_file(file_path: Path, file_id: int) -> tuple[bool, str, dict, l
         return False, f"File {file_path.name} does not exist.", {}, []
 
     size_bytes = file_path.stat().st_size
+    # Reject truncated files at or below 100 KiB (102400 bytes)
     if size_bytes <= 100 * 1024:
         return False, f"File {file_path.name} size {size_bytes} <= 100 KB threshold.", {}, []
 
@@ -223,11 +227,13 @@ def main():
             if raw_samples <= 200000:
                 print(f"[STOP] File {fname} normal length {raw_samples} <= 200,000 samples. Unexpected length.")
                 sys.exit(1)
+            # Downsample Normal recordings from 48 kHz to 12 kHz (factor 1/4) via polyphase FIR filtering
             x_12k = scipy.signal.resample_poly(raw_x, 1, 4)
         else:
             x_12k = raw_x
 
         resampled_12k_samples = len(x_12k)
+        # Non-overlapping step = 1024 (50% of 2048-sample window); floor((N - 2048) / 1024) + 1 windows
         window_count = (resampled_12k_samples - 2048) // 1024 + 1
 
         # Anomaly flags
@@ -235,9 +241,11 @@ def main():
         if other_keys:
             flags.append("multiple_de_keys")
         if fclass != "Normal":
+            # Flag if sample count deviates > 5% from nominal 121000 samples
             if abs(raw_samples - 121000) / 121000 > 0.05:
                 flags.append("length_deviates")
         if rpm_source == "mat_file":
+            # Flag if embedded RPM deviates > 20 RPM from NOMINAL_RPM[load_hp] ({0:1797, 1:1772, 2:1750, 3:1730})
             if abs(rpm - NOMINAL_RPM[load_hp]) > 20:
                 flags.append("rpm_load_mismatch")
         elif rpm_source == "fallback":

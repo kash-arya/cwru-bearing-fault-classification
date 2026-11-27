@@ -2,6 +2,8 @@
 
 Evaluates clean-trained classifiers under 10 dB and 5 dB Gaussian noise across LOLO splits.
 """
+# Reads: data/processed/phase2_features_lp3500.csv, data/processed/phase3_splits.json, data/processed/phase4_best_params.json, results/phase6_metrics.csv, cache data/processed/phase6_cache/features/*__rep0.pkl
+# Writes: results/phase6b_noise_confusion.csv
 
 from pathlib import Path
 import json
@@ -54,6 +56,7 @@ def main():
 
         # 1. SVM
         p_svm = best_params["svm"][s_name]["best_params"]
+        # CorrelationFilter(0.95) keeps earlier column of pairs with |r| > 0.95; StandardScaler + balanced RBF SVC
         svm = Pipeline([
             ("corr", CorrelationFilter(0.95)),
             ("scaler", StandardScaler()),
@@ -89,6 +92,7 @@ def main():
 
         # 3. XGBoost
         p_xgb = best_params["xgb"][s_name]["best_params"]
+        # Class-balanced sample weights: n_samples / (n_classes * count_c)
         sw = compute_sample_weight("balanced", y_tr)
         xgb = XGBClassifier(
             n_estimators=200, max_depth=p_xgb["max_depth"],
@@ -125,6 +129,7 @@ def main():
             df_noisy = pickle.load(f)
 
         for model_name in MODELS:
+            # Sum 4x4 confusion matrices (labels [0..3]) across all 4 disjoint LOLO test folds using rep 0 cache
             cm_total = np.zeros((4, 4), dtype=int)
             for s_name in LOLO_SPLITS:
                 s_data = splits_json[s_name]

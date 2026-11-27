@@ -13,6 +13,8 @@ Executes:
 7. Feature degradation vs. noise analysis
 8. Generation of publication figures and results/phase6_summary.md
 """
+# Reads: data/processed/phase1_signals_12k.pkl, results/phase1_file_manifest.csv, data/processed/phase2_features_lp3500.csv, data/processed/phase3_splits.json, data/processed/phase4_best_params.json, results/phase4_metrics.csv, cache data/processed/phase6_cache/features/*.pkl
+# Writes: cache data/processed/phase6_cache/features/*.pkl, results/phase6_effective_snr_variant_a.csv, results/phase6_effective_snr_variant_b.csv, results/phase6_metrics.csv, results/phase6_envelope_vs_snr.csv, results/fig_phase6_macro_f1_vs_snr.png, results/fig_phase6_envelope_vs_snr.png, results/phase6_summary.md
 
 import json
 import os
@@ -59,12 +61,15 @@ NORMAL_FIDS = {97, 98, 99, 100}
 def generate_noise_for_file(variant: str, snr_db: float, rep: int, fid: int, n_samples: int, p_signal: float, p_ref: float) -> tuple[np.ndarray, float]:
     """Deterministically generate white Gaussian noise for a single file."""
     if variant == "variant_A":
+        # Variant A: noise_var = P_file / 10^(snr_db / 10)
         noise_var = p_signal / (10.0 ** (snr_db / 10.0))
     elif variant == "variant_B":
+        # Variant B: fixed noise_var = P_ref / 10^(snr_db / 10)
         noise_var = p_ref / (10.0 ** (snr_db / 10.0))
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
+    # Deterministic 32-bit CRC32 seed per (variant, snr_db, rep, fid); N(0, sqrt(noise_var)) Gaussian sample
     seed = zlib.crc32(f"{variant}|{int(snr_db)}|{int(rep)}|{int(fid)}".encode("utf-8")) & 0xFFFFFFFF
     rng = np.random.default_rng(seed)
     noise = rng.normal(0.0, np.sqrt(noise_var), size=n_samples)
@@ -106,18 +111,21 @@ def main():
 
     # 2. Pre-compute powers & filter setup
     print("\n[2/8] Computing signal powers & filter setups...")
+    # 8th-order Butterworth low-pass filter at 3500 Hz (fs=12000 Hz)
     lp_sos = scipy.signal.butter(8, 3500, btype="lowpass", fs=12000, output="sos")
 
     P_file = {}
     P_file_post_lp = {}
     for fid in sorted(signals.keys()):
         raw_x = signals[fid]["x"]
+        # AC signal power pre-LP and post zero-phase LP: mean((x - mean(x))^2)
         P_file[fid] = float(np.mean((raw_x - np.mean(raw_x)) ** 2))
         x_clean_lp = scipy.signal.sosfiltfilt(lp_sos, raw_x)
         P_file_post_lp[fid] = float(np.mean((x_clean_lp - np.mean(x_clean_lp)) ** 2))
 
     fault_fids = [fid for fid in sorted(signals.keys()) if fid not in NORMAL_FIDS]
     assert len(fault_fids) == 36, f"Expected 36 fault files, got {len(fault_fids)}"
+    # Fixed reference power P_ref = median(P_file) across all 36 fault files (excluding Normal {97,98,99,100})
     P_ref = float(np.median([P_file[fid] for fid in fault_fids]))
     print(f"  P_ref (median fault power pre-LP): {P_ref:.6f} (RMS: {np.sqrt(P_ref):.4f})")
 
@@ -225,6 +233,7 @@ def main():
                     target_eff_pre = float(snr_db)
                 else:
                     noise_var = p_ref_val / (10.0 ** (snr_db / 10.0))
+                    # Power ratio in dB for Variant B target SNR: 10*log10(P_file / noise_var)
                     target_eff_pre = float(10.0 * np.log10(p_file_val / noise_var))
 
                 meas_pre_reps = []
@@ -235,14 +244,17 @@ def main():
                     meas_var = float(np.mean(noise ** 2))
 
                     # Fail-Fast Check (a): Noise power check
+                    # Assert |10*log10(mean(noise^2) / target_var)| <= 0.2 dB
                     ratio_db = 10.0 * np.log10(meas_var / n_var)
                     assert abs(ratio_db) <= 0.2, (
                         f"Check (a) failed for {variant}, SNR={snr_db}, rep={rep}, fid={fid}: ratio_db={ratio_db:.4f} > 0.2"
                     )
 
+                    # Zero-phase filter applied to noise before measuring post-LP noise AC power
                     noise_lp = scipy.signal.sosfiltfilt(lp_sos, noise)
                     meas_post_var = float(np.mean((noise_lp - np.mean(noise_lp)) ** 2))
 
+                    # Empirical pre-LP and post-LP SNR (dB) via 10*log10(signal_power / noise_power)
                     meas_pre_reps.append(10.0 * np.log10(p_file_val / meas_var))
                     meas_post_reps.append(10.0 * np.log10(P_file_post_lp[fid] / meas_post_var))
 
@@ -448,6 +460,7 @@ def main():
                     # Average over repetitions per split first
                     rep_means = sub.groupby("split")["macro_f1"].mean().values
                     split_m = float(np.mean(rep_means))
+                    # Sample standard deviation across splits using ddof=1
                     split_s = float(np.std(rep_means, ddof=1)) if len(rep_means) > 1 else 0.0
                     y_means.append(split_m)
                     y_errs.append(split_s)
@@ -562,6 +575,7 @@ def main():
                     for sp in splits_in_grp:
                         sp_sub = sub[sub["split"] == sp]["macro_f1"].values
                         rm = float(np.mean(sp_sub))
+                        # Sample standard deviation across repetitions/splits using ddof=1
                         rs = float(np.std(sp_sub, ddof=1)) if len(sp_sub) > 1 else 0.0
                         rep_means.append(rm)
                         rep_stds.append(rs)

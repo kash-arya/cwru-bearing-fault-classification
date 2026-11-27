@@ -2,6 +2,8 @@
 
 Computes fractional energy removed by the 3500 Hz low-pass filter and power distributions.
 """
+# Reads: data/processed/phase1_signals_12k.pkl (pickle.load), results/phase1_file_manifest.csv (pd.read_csv)
+# Writes: results/phase6b_power_above_3500.csv (to_csv)
 
 from pathlib import Path
 import pickle
@@ -23,17 +25,21 @@ def main():
     manifest_df["file_id"] = manifest_df["file_id"].astype(int)
     manifest_df = manifest_df.set_index("file_id")
 
+    # 8th-order Butterworth low-pass filter at 3500 Hz (fs=12000 Hz)
     lp_sos = scipy.signal.butter(8, 3500, btype="lowpass", fs=12000, output="sos")
 
     rows = []
     for fid in sorted(signals.keys()):
         raw_x = signals[fid]["x"]
+        # Demean before computing AC variance P_pre = mean(x^2) and post zero-phase LP variance P_post = mean(x_lp^2)
         x = raw_x - np.mean(raw_x)
         P_pre = float(np.mean(x ** 2))
         x_lp = scipy.signal.sosfiltfilt(lp_sos, x)
         P_post = float(np.mean(x_lp ** 2))
+        # Fraction of pre-filter AC power attenuated by 3500 Hz zero-phase filter: 1 - P_post / P_pre
         frac_removed = float(1.0 - P_post / P_pre)
 
+        # Welch PSD (fs=12000 Hz, nperseg=2048) and fractional power in [>=3500], [3500, 4000], and [4000, 5900] Hz
         freqs, psd = scipy.signal.welch(x, fs=12000, nperseg=2048)
         tot_p = float(np.sum(psd))
 

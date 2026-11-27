@@ -6,6 +6,8 @@ Saves:
 - results/diagnostic_envelope_spectra.png
 - results/phase2_diagnostics_summary.txt
 """
+# Reads: data/processed/phase1_signals_12k.pkl (via pickle.load), data/raw/109.mat (fallbacks: 109.mat, verification/109.mat via loadmat)
+# Writes: results/phase2_diagnostics_summary.txt, results/diagnostic_filter_rolloff.png, results/diagnostic_envelope_spectra.png
 
 import os
 import sys
@@ -49,9 +51,11 @@ def compute_average_spectrum(x: np.ndarray, window_size: int = 2048, step: int =
     specs = []
     for i in range(n_windows):
         win = x[i * step : i * step + window_size]
+        # Unnormalized DFT magnitude: |rfft(win * hann)| per 2048-sample window (step=1024, fs=12000 Hz)
         spec = np.abs(np.fft.rfft(win * hann))
         specs.append(spec)
     avg_spec = np.mean(specs, axis=0)
+    # Frequency axis in Hz for sample spacing d = 1/12000 s (df = 12000/2048 Hz)
     freqs = np.fft.rfftfreq(window_size, d=1.0 / 12000.0)
     return freqs, avg_spec
 
@@ -63,8 +67,10 @@ def compute_envelope_spectrum(x: np.ndarray, sos: np.ndarray, window_size: int =
     env_specs = []
     for i in range(n_windows):
         win = x[i * step : i * step + window_size]
+        # Zero-phase bandpass filter followed by window mean removal
         filtered = scipy.signal.sosfiltfilt(sos, win)
         demeaned = filtered - np.mean(filtered)
+        # Analytic signal envelope |hilbert(demeaned)| with DC offset removed before Hann-windowed rfft
         env = np.abs(scipy.signal.hilbert(demeaned))
         env_demeaned = env - np.mean(env)
         env_spec = np.abs(np.fft.rfft(env_demeaned * hann))
@@ -97,6 +103,7 @@ def main():
     # Check 1: Filter Shapes
     # -------------------------------------------------------------------------
     print("\n--- Check 1: Filter Shapes ---")
+    # 4th-order Butterworth bandpass filters at fs=12000 Hz: [2000, 5000] Hz (sos_a) and [2000, 4500] Hz (sos_b)
     sos_a = scipy.signal.butter(4, [2000, 5000], btype="bandpass", fs=12000, output="sos")
     sos_b = scipy.signal.butter(4, [2000, 4500], btype="bandpass", fs=12000, output="sos")
 
@@ -104,6 +111,7 @@ def main():
     w_a, h_a = scipy.signal.sosfreqz(sos_a, worN=check_freqs, fs=12000)
     w_b, h_b = scipy.signal.sosfreqz(sos_b, worN=check_freqs, fs=12000)
 
+    # Single-pass amplitude gain in dB: 20*log10(max(|H|, 1e-12)); sosfiltfilt doubles dB gain (|H|^2)
     gain_a_single = 20 * np.log10(np.maximum(np.abs(h_a), 1e-12))
     gain_a_zero = 2.0 * gain_a_single
     gain_b_single = 20 * np.log10(np.maximum(np.abs(h_b), 1e-12))
@@ -138,6 +146,7 @@ def main():
         sys.exit(1)
 
     x_109_raw = mat_109["X109_DE_time"].squeeze().astype(np.float64)
+    # Downsample 48 kHz recording 109.mat by factor 1/4 to 12 kHz via polyphase FIR filtering
     x_109r = scipy.signal.resample_poly(x_109_raw, 1, 4)
 
     if "X109RPM" in mat_109:
@@ -155,6 +164,7 @@ def main():
     band_45_50 = (freqs_105 >= 4500) & (freqs_105 <= 5000)
     band_50_59 = (freqs_105 >= 5000) & (freqs_105 <= 5900)
 
+    # Mean magnitude amplitude ratio in dB: 20*log10(mean(s_109r[band]) / mean(s_105[band]))
     ratio_ref_db = 20.0 * np.log10(np.mean(s_109r[band_ref]) / np.mean(s_105[band_ref]))
     ratio_40_45_db = 20.0 * np.log10(np.mean(s_109r[band_40_45]) / np.mean(s_105[band_40_45]))
     ratio_45_50_db = 20.0 * np.log10(np.mean(s_109r[band_45_50]) / np.mean(s_105[band_45_50]))
@@ -170,6 +180,7 @@ def main():
     print(f"Ratio in 5000-5900 Hz: {ratio_50_59_db:+.2f} dB | Difference from reference: {diff_50_59:+.2f} dB")
 
     max_diff = max(abs(diff_40_45), abs(diff_45_50), abs(diff_50_59))
+    # Flag if any upper-band amplitude ratio deviates > 6.0 dB from the 2000-4000 Hz reference
     if max_diff > 6.0:
         print("Verdict: LEAKAGE RISK")
     else:
@@ -190,6 +201,7 @@ def main():
     for fid in sorted(signals.keys()):
         data = signals[fid]
         _, s_file = compute_average_spectrum(data["x"])
+        # Roll-off amplitude ratio in dB: 20*log10(mean(|X| in 5500-5900 Hz) / mean(|X| in 3500-4000 Hz))
         cliff = 20.0 * np.log10(np.mean(s_file[mask_high]) / np.mean(s_file[mask_mid]))
         cls = data["meta"]["fault_class"]
         cliff_records.append({"id": fid, "class": cls, "cliff_dB": cliff})
@@ -317,6 +329,8 @@ def main():
             hp = meta["load_hp"]
             rpm = meta["rpm"]
 
+            # Shaft frequency f_sh = RPM / 60 (Hz) and bearing characteristic frequencies
+            # BPFO = 3.5848*f_sh, BPFI = 5.4152*f_sh, BSF = 4.7135*f_sh, 2xBSF = 2*BSF
             f_sh = rpm / 60.0
             bpfo_f = 3.5848 * f_sh
             bpfi_f = 5.4152 * f_sh
@@ -328,8 +342,10 @@ def main():
             if band_label == "Band 2-5 kHz" and fid in [97, 105, 118, 130, 185, 222]:
                 spectra_to_plot[fid] = (env_f, avg_env, bpfo_f, bpfi_f, bsf_f, bsf2_f, cls, sev, hp)
 
+            # Baseline noise floor: median envelope amplitude in 10-350 Hz
             med_noise = np.median(avg_env[base_freq_mask])
 
+            # Envelope peak-to-median SNR = max(avg_env in f0 +- 6.0 Hz) / med_noise; ball SNR = max(BSF, 2xBSF)
             snr_bpfo = np.max(avg_env[(env_f >= bpfo_f - tol) & (env_f <= bpfo_f + tol)]) / med_noise
             snr_bpfi = np.max(avg_env[(env_f >= bpfi_f - tol) & (env_f <= bpfi_f + tol)]) / med_noise
             snr_bsf = np.max(avg_env[(env_f >= bsf_f - tol) & (env_f <= bsf_f + tol)]) / med_noise

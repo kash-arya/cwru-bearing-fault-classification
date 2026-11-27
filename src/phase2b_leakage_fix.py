@@ -11,6 +11,8 @@ Outputs:
 - results/phase2b_leakage_fix_summary.txt
 - results/diagnostic_leakage_fix.png
 """
+# Reads: data/processed/phase1_signals_12k.pkl (pickle.load), results/phase1_file_manifest.csv (pd.read_csv), data/raw/109.mat (fallbacks: 109.mat, verification/109.mat via loadmat)
+# Writes: results/phase2b_leakage_fix_summary.txt, results/diagnostic_leakage_fix.png
 
 import os
 import sys
@@ -56,9 +58,11 @@ def compute_average_spectrum(x: np.ndarray, window_size: int = 2048, step: int =
     specs = []
     for i in range(n_windows):
         win = x[i * step : i * step + window_size]
+        # Unnormalized DFT magnitude |rfft(win * hann)| per 2048-sample window (step=1024, fs=12000 Hz)
         spec = np.abs(np.fft.rfft(win * hann))
         specs.append(spec)
     avg_spec = np.mean(specs, axis=0)
+    # Frequency bins in Hz for sample spacing 1/12000 s
     freqs = np.fft.rfftfreq(window_size, d=1.0 / 12000.0)
     return freqs, avg_spec
 
@@ -70,8 +74,10 @@ def compute_envelope_spectrum(x: np.ndarray, sos: np.ndarray, window_size: int =
     env_specs = []
     for i in range(n_windows):
         win = x[i * step : i * step + window_size]
+        # Zero-phase bandpass filter followed by mean removal
         filtered = scipy.signal.sosfiltfilt(sos, win)
         demeaned = filtered - np.mean(filtered)
+        # Analytic signal envelope |hilbert(demeaned)| demeaned before Hann-windowed rfft
         env = np.abs(scipy.signal.hilbert(demeaned))
         env_demeaned = env - np.mean(env)
         env_spec = np.abs(np.fft.rfft(env_demeaned * hann))
@@ -126,6 +132,7 @@ def main():
         sys.exit(1)
 
     x_109_raw = mat_109["X109_DE_time"].squeeze().astype(np.float64)
+    # Downsample 48 kHz recording 109.mat by factor 1/4 to 12 kHz via polyphase FIR filtering
     x_109r = scipy.signal.resample_poly(x_109_raw, 1, 4)
 
     # Base signals list: all 40 files + 109r
@@ -144,6 +151,7 @@ def main():
     spectra_for_plots = {}
 
     for C in cutoffs:
+        # 8th-order Butterworth low-pass filter at cutoff C Hz (cutoffs=[3000, 3500, 4000] Hz, fs=12000 Hz)
         lp_sos = scipy.signal.butter(8, C, btype="lowpass", fs=12000, output="sos")
 
         # Filter 105 and 109r
@@ -169,11 +177,14 @@ def main():
             mask = (freqs >= low_f) & (freqs <= high_f)
             mean_105 = np.mean(s_105[mask])
             mean_109r = np.mean(s_109r[mask])
+            # Sub-band spectral amplitude ratio in dB: 20*log10(mean_109r / mean_105), floored at 1e-12
             ratio = 20.0 * np.log10(max(mean_109r, 1e-12) / max(mean_105, 1e-12))
             ratios_db.append(ratio)
+            # Sub-band center frequency in kHz: (low_f + high_f) / 2000.0
             centres_khz.append((low_f + high_f) / 2000.0)
             sub_band_labels.append(f"{low_f}-{high_f}Hz")
 
+        # Spread = max(ratios_db) - min(ratios_db) (dB); slope = OLS linear slope of ratio_dB vs kHz
         spread = max(ratios_db) - min(ratios_db)
         slope = float(np.polyfit(centres_khz, ratios_db, 1)[0])
         status = "CONTROL OK" if spread <= 3.0 else "CONTROL NOT OK"
@@ -202,6 +213,7 @@ def main():
         freqs, s_105, s_109r = spectra_for_plots[C]
         mask = (freqs >= 10.0) & (freqs <= float(C))
         f_sub = freqs[mask]
+        # Binwise spectral amplitude ratio in dB (10 Hz to C Hz): 20*log10(s_109r / s_105), floored at 1e-12
         ratio_curve = 20.0 * np.log10(np.maximum(s_109r[mask], 1e-12) / np.maximum(s_105[mask], 1e-12))
 
         ax.plot(f_sub, ratio_curve, "b-", linewidth=1.0, label="109r / 105 (dB)")
@@ -245,10 +257,12 @@ def main():
             filtered_signals[fid] = scipy.signal.sosfiltfilt(lp_sos, signals[fid]["x"])
         filtered_signals["109r"] = scipy.signal.sosfiltfilt(lp_sos, x_109r)
 
+        # Evaluate only bandpass ranges whose high edge fits >= 500 Hz below low-pass cutoff C
         valid_bands = [b for b in candidate_bands if b[1] <= C - 500]
 
         for band in valid_bands:
             band_tuple = tuple(band)
+            # 4th-order Butterworth bandpass filter for envelope carrier band (fs=12000 Hz)
             bp_sos = scipy.signal.butter(4, list(band), btype="bandpass", fs=12000, output="sos")
 
             print("\n" + "-" * 100)
@@ -280,16 +294,19 @@ def main():
                     rpm = float(meta["rpm"])
                     display_cls = cls
 
+                # Shaft frequency f_shaft = RPM / 60.0 (Hz) and fault multiples BPFO/BPFI/BSF
                 f_shaft = rpm / 60.0
                 bpfo = 3.5848 * f_shaft
                 bpfi = 5.4152 * f_shaft
                 bsf = 4.7135 * f_shaft
 
                 env_f, avg_env = compute_envelope_spectrum(x_sig, bp_sos)
+                # Baseline envelope floor: median amplitude across 10-350 Hz
                 noise_median = np.median(avg_env[(env_f >= 10.0) & (env_f <= 350.0)])
 
                 tol = 6.0
                 def get_snr(f_target):
+                    # Peak-to-median amplitude ratio within f_target +- 6.0 Hz
                     band_mask = (env_f >= f_target - tol) & (env_f <= f_target + tol)
                     return float(np.max(avg_env[band_mask]) / noise_median)
 
@@ -356,6 +373,7 @@ def main():
             for fid in fault_fids:
                 counts_fault[snr_store[(C, band_tuple)][fid]["strongest"]] += 1
 
+            # Chance-level expected matches out of 12 files = 12 * (class_strongest_count / 36)
             chance_outer = 12.0 * (counts_fault["outer"] / 36.0)
             chance_inner = 12.0 * (counts_fault["inner"] / 36.0)
             chance_ball = 12.0 * (counts_fault["ball"] / 36.0)
@@ -444,6 +462,7 @@ def main():
                 abs_diff = max(vals) - min(vals)
                 if abs_diff > max_abs_diff:
                     max_abs_diff = abs_diff
+                # Flag relative SNR variation across cutoffs C if (max - min) / min * 100 >= 5.0%
                 min_val = min(vals)
                 pct_diff = (abs_diff / min_val) * 100.0 if min_val > 1e-12 else 0.0
                 if pct_diff >= 5.0:
